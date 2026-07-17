@@ -1,6 +1,8 @@
 import logging
 from datetime import date
 
+from psycopg2 import Error as Psycopg2Error
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
@@ -99,6 +101,8 @@ class InventoryFeedSyncLog(models.Model):
                 }
             )
         except Exception as exc:  # noqa: BLE001 - this is a cron boundary.
+            if isinstance(exc, Psycopg2Error):
+                raise
             _logger.exception("Inventory feed synchronization failed")
             self.write(
                 {
