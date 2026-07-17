@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="param_inventory_feed_base_url" model="ir.config_parameter">
+        <field name="key">warehouse_inventory_feed.base_url</field>
+        <field name="value">https://di.lug.info.vn</field>
+    </record>
+    <record id="param_inventory_feed_collection" model="ir.config_parameter">
+        <field name="key">warehouse_inventory_feed.collection</field>
+        <field name="value">tmdt_inventory_status</field>
+    </record>
+    <record id="param_inventory_feed_auth_mode" model="ir.config_parameter">
+        <field name="key">warehouse_inventory_feed.auth_mode</field>
+        <field name="value">access_token</field>
+    </record>
+    <record id="param_inventory_feed_page_size" model="ir.config_parameter">
+        <field name="key">warehouse_inventory_feed.page_size</field>
+        <field name="value">500</field>
+    </record>
+    <record id="param_inventory_feed_auto_create_stores" model="ir.config_parameter">
+        <field name="key">warehouse_inventory_feed.auto_create_stores</field>
+        <field name="value">1</field>
+    </record>
+    <record id="param_inventory_feed_auto_create_locations" model="ir.config_parameter">
+        <field name="key">warehouse_inventory_feed.auto_create_locations</field>
+        <field name="value">1</field>
+    </record>
+    <record id="param_inventory_feed_auto_create_products" model="ir.config_parameter">
+        <field name="key">warehouse_inventory_feed.auto_create_products</field>
+        <field name="value">1</field>
+    </record>
+</odoo>

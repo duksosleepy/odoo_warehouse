@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="inventory_feed_sync_log_view_list" model="ir.ui.view">
+        <field name="name">inventory.feed.sync.log.list</field>
+        <field name="model">inventory.feed.sync.log</field>
+        <field name="arch" type="xml">
+            <list string="Inventory Feed Logs" create="0" edit="0">
+                <field name="started_at"/>
+                <field name="sync_type"/>
+                <field name="state"/>
+                <field name="total_feed_records"/>
+                <field name="unique_inventory_records"/>
+                <field name="created_store_count"/>
+                <field name="updated_quant_count"/>
+                <field name="skipped_count"/>
+                <field name="error_count"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="inventory_feed_sync_log_view_form" model="ir.ui.view">
+        <field name="name">inventory.feed.sync.log.form</field>
+        <field name="model">inventory.feed.sync.log</field>
+        <field name="arch" type="xml">
+            <form string="Inventory Feed Log" create="0" edit="0">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="sync_type"/>
+                            <field name="state"/>
+                            <field name="started_at"/>
+                            <field name="finished_at"/>
+                        </group>
+                        <group>
+                            <field name="total_feed_records"/>
+                            <field name="unique_inventory_records"/>
+                            <field name="created_store_count"/>
+                            <field name="updated_store_count"/>
+                            <field name="created_location_count"/>
+                            <field name="created_product_count"/>
+                            <field name="updated_quant_count"/>
+                            <field name="unchanged_quant_count"/>
+                            <field name="skipped_count"/>
+                            <field name="error_count"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="message"/>
+                        <field name="error_message"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="inventory_feed_sync_log_action" model="ir.actions.act_window">
+        <field name="name">Inventory Feed Logs</field>
+        <field name="res_model">inventory.feed.sync.log</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="inventory_feed_sync_log_menu"
+              name="Inventory Feed Logs"
+              parent="stock.menu_stock_config_settings"
+              action="inventory_feed_sync_log_action"
+              sequence="31"
+              groups="stock.group_stock_manager"/>
+</odoo>

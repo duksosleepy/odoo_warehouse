@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_inventory_feed_store_user,inventory.feed.store user,model_inventory_feed_store,stock.group_stock_user,1,0,0,0
+access_inventory_feed_store_manager,inventory.feed.store manager,model_inventory_feed_store,stock.group_stock_manager,1,1,1,1
+access_inventory_feed_sync_log_user,inventory.feed.sync.log user,model_inventory_feed_sync_log,stock.group_stock_user,1,0,0,0
+access_inventory_feed_sync_log_manager,inventory.feed.sync.log manager,model_inventory_feed_sync_log,stock.group_stock_manager,1,1,1,1

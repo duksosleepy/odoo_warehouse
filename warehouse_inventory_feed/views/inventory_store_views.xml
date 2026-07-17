@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="inventory_feed_store_view_list" model="ir.ui.view">
+        <field name="name">inventory.feed.store.list</field>
+        <field name="model">inventory.feed.store</field>
+        <field name="arch" type="xml">
+            <list string="Stores">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="location_id"/>
+                <field name="last_inventory_date"/>
+                <field name="last_seen_at"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="inventory_feed_store_view_form" model="ir.ui.view">
+        <field name="name">inventory.feed.store.form</field>
+        <field name="model">inventory.feed.store</field>
+        <field name="arch" type="xml">
+            <form string="Store">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_open_location"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-map-marker"
+                                invisible="not location_id">
+                            <div class="o_stat_info">
+                                <span class="o_stat_text">Location</span>
+                            </div>
+                        </button>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="active"/>
+                            <field name="code"/>
+                            <field name="name"/>
+                            <field name="location_id"/>
+                        </group>
+                        <group>
+                            <field name="last_inventory_date" readonly="1"/>
+                            <field name="last_seen_at" readonly="1"/>
+                            <field name="last_source_id" readonly="1"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="address"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="inventory_feed_store_view_search" model="ir.ui.view">
+        <field name="name">inventory.feed.store.search</field>
+        <field name="model">inventory.feed.store</field>
+        <field name="arch" type="xml">
+            <search string="Stores">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="location_id"/>
+                <filter string="Without Location" name="without_location" domain="[('location_id', '=', False)]"/>
+                <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="inventory_feed_store_action" model="ir.actions.act_window">
+        <field name="name">Stores</field>
+        <field name="res_model">inventory.feed.store</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="inventory_feed_store_view_search"/>
+    </record>
+
+    <menuitem id="inventory_feed_store_menu"
+              name="Stores"
+              parent="stock.menu_stock_config_settings"
+              action="inventory_feed_store_action"
+              sequence="30"
+              groups="stock.group_stock_manager"/>
+</odoo>
