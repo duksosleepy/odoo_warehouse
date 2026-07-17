@@ -16,6 +16,12 @@ class InventoryFeedStore(models.Model):
         ondelete="restrict",
         help="Internal Odoo location whose on-hand quantity is synchronized from this store feed.",
     )
+    warehouse_id = fields.Many2one(
+        "stock.warehouse",
+        string="Warehouse",
+        ondelete="restrict",
+        help="Odoo warehouse represented by this store feed code.",
+    )
     active = fields.Boolean(default=True)
     last_seen_at = fields.Datetime(readonly=True)
     last_inventory_date = fields.Date(readonly=True)
@@ -40,6 +46,16 @@ class InventoryFeedStore(models.Model):
             "name": self.location_id.display_name,
             "res_model": "stock.location",
             "res_id": self.location_id.id,
+            "view_mode": "form",
+        }
+
+    def action_open_warehouse(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": self.warehouse_id.display_name,
+            "res_model": "stock.warehouse",
+            "res_id": self.warehouse_id.id,
             "view_mode": "form",
         }
 

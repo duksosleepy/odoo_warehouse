@@ -31,13 +31,9 @@
                             </div>
                         </div>
                     </setting>
-                    <setting id="inventory_feed_creation" string="Missing Data" help="Create Odoo records when the feed has a new store or SKU.">
+                    <setting id="inventory_feed_creation" string="Missing Data" help="Create Odoo records when the feed has a new warehouse or SKU.">
                         <field name="inventory_feed_auto_create_stores"/>
                         <div class="content-group">
-                            <div class="mt8">
-                                <field name="inventory_feed_auto_create_locations"/>
-                                <label for="inventory_feed_auto_create_locations"/>
-                            </div>
                             <div class="mt8">
                                 <field name="inventory_feed_auto_create_products"/>
                                 <label for="inventory_feed_auto_create_products"/>
@@ -45,7 +41,7 @@
                         </div>
                     </setting>
                     <setting id="inventory_feed_actions" string="Manual Sync" help="Run the same sync logic used by the daily scheduled action.">
-                        <button name="action_sync_stores" type="object" string="Sync Stores" class="btn-link" icon="oi-arrow-right"/>
+                        <button name="action_sync_stores" type="object" string="Sync Warehouses" class="btn-link" icon="oi-arrow-right"/>
                         <br/>
                         <button name="action_sync_inventory" type="object" string="Sync Inventory" class="btn-link" icon="oi-arrow-right"/>
                     </setting>

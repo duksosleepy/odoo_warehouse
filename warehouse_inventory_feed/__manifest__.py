@@ -8,6 +8,7 @@
     "depends": ["base_import", "directus_connector", "stock"],
     "data": [
         "security/ir.model.access.csv",
+        "data/cleanup_obsolete_ui.xml",
         "data/ir_config_parameter.xml",
         "data/ir_cron.xml",
         "views/inventory_store_views.xml",

@@ -31,14 +31,9 @@ class ResConfigSettings(models.TransientModel):
         config_parameter="warehouse_inventory_feed.page_size",
     )
     inventory_feed_auto_create_stores = fields.Boolean(
-        string="Create Missing Stores",
+        string="Create Missing Warehouses",
         default=True,
         config_parameter="warehouse_inventory_feed.auto_create_stores",
-    )
-    inventory_feed_auto_create_locations = fields.Boolean(
-        string="Create Missing Store Locations",
-        default=True,
-        config_parameter="warehouse_inventory_feed.auto_create_locations",
     )
     inventory_feed_auto_create_products = fields.Boolean(
         string="Create Missing Products",

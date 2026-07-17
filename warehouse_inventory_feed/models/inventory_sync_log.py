@@ -29,7 +29,7 @@ class InventoryFeedSyncLog(models.Model):
 
     name = fields.Char(default=lambda self: _("Inventory Feed Sync"), required=True)
     sync_type = fields.Selection(
-        selection=[("stores", "Stores"), ("inventory", "Inventory")],
+        selection=[("stores", "Warehouses"), ("inventory", "Inventory")],
         required=True,
         default="inventory",
     )
@@ -43,9 +43,9 @@ class InventoryFeedSyncLog(models.Model):
     finished_at = fields.Datetime(readonly=True)
     total_feed_records = fields.Integer(readonly=True)
     unique_inventory_records = fields.Integer(readonly=True)
-    created_store_count = fields.Integer(readonly=True)
-    updated_store_count = fields.Integer(readonly=True)
-    created_location_count = fields.Integer(readonly=True)
+    created_store_count = fields.Integer(string="Created Warehouses", readonly=True)
+    updated_store_count = fields.Integer(string="Updated Warehouses", readonly=True)
+    created_location_count = fields.Integer(string="Created Locations", readonly=True)
     created_product_count = fields.Integer(readonly=True)
     updated_quant_count = fields.Integer(readonly=True)
     unchanged_quant_count = fields.Integer(readonly=True)
@@ -60,7 +60,7 @@ class InventoryFeedSyncLog(models.Model):
 
     @api.model
     def action_run_store_sync(self):
-        log = self.create({"sync_type": "stores", "name": _("Store Feed Sync")})
+        log = self.create({"sync_type": "stores", "name": _("Warehouse Feed Sync")})
         log._run_sync(stores_only=True)
         return log._action_open()
 
@@ -112,13 +112,13 @@ class InventoryFeedSyncLog(models.Model):
     def _summary_message(self, stats, *, stores_only):
         if stores_only:
             return _(
-                "Processed %(total)s feed rows. Created %(created)s stores and updated %(updated)s stores.",
+                "Processed %(total)s feed rows. Created %(created)s warehouses and updated %(updated)s warehouses.",
                 total=stats.get("total_feed_records", 0),
                 created=stats.get("created_store_count", 0),
                 updated=stats.get("updated_store_count", 0),
             )
         return _(
-            "Processed %(total)s feed rows into %(unique)s store/SKU balances. Updated %(quants)s quants, left %(unchanged)s unchanged, skipped %(skipped)s.",
+            "Processed %(total)s feed rows into %(unique)s warehouse/SKU balances. Updated %(quants)s quants, left %(unchanged)s unchanged, skipped %(skipped)s.",
             total=stats.get("total_feed_records", 0),
             unique=stats.get("unique_inventory_records", 0),
             quants=stats.get("updated_quant_count", 0),
@@ -179,7 +179,6 @@ class InventoryFeedSyncLog(models.Model):
         Store = self.env["inventory.feed.store"].sudo()
         now = fields.Datetime.now()
         auto_create_stores = self._config_bool("auto_create_stores", default=True)
-        auto_create_locations = self._config_bool("auto_create_locations", default=True)
         stores_payload = {}
 
         for row in rows:
@@ -207,17 +206,20 @@ class InventoryFeedSyncLog(models.Model):
                 payload["last_inventory_date"] = row_date
                 payload["last_source_id"] = row.get("id")
 
-        existing = {
+        existing_stores = {
             store.code: store
             for store in Store.with_context(active_test=False).search(
                 [("code", "in", list(stores_payload))]
             )
         }
-        created = updated = locations = 0
-        parent_location = None
+        existing_warehouses = self._get_existing_warehouses(stores_payload)
+        created = updated = 0
 
         for code, payload in stores_payload.items():
-            store = existing.get(code)
+            store = existing_stores.get(code)
+            if not store and not auto_create_stores:
+                continue
+
             vals = {
                 "name": payload["name"] or code,
                 "address": payload["address"] or False,
@@ -225,56 +227,89 @@ class InventoryFeedSyncLog(models.Model):
                 "last_inventory_date": payload["last_inventory_date"],
                 "last_source_id": payload["last_source_id"],
             }
+            warehouse = self._sync_store_warehouse(code, existing_warehouses)
+            if warehouse:
+                vals["warehouse_id"] = warehouse.id
+                vals["location_id"] = warehouse.lot_stock_id.id
             if store:
                 store.write(vals)
                 updated += 1
             elif auto_create_stores:
                 store = Store.create({"code": code, **vals})
-                existing[code] = store
+                existing_stores[code] = store
                 created += 1
-            else:
-                continue
-
-            if auto_create_locations and store and not store.location_id:
-                parent_location = parent_location or self._default_parent_location()
-                if parent_location:
-                    store.location_id = self._create_store_location(store, parent_location)
-                    locations += 1
 
         return {
             "created_store_count": created,
             "updated_store_count": updated,
-            "created_location_count": locations,
+            "created_location_count": 0,
         }
+
+    def _get_existing_warehouses(self, stores_payload):
+        Warehouse = self.env["stock.warehouse"].sudo().with_context(active_test=False)
+        codes = list(stores_payload)
+        warehouses = Warehouse.search([
+            ("company_id", "=", self.env.company.id),
+            "|",
+            ("code", "in", codes),
+            ("name", "in", codes),
+        ])
+        existing = {}
+        for warehouse in warehouses:
+            if warehouse.code in stores_payload:
+                existing[warehouse.code] = warehouse
+            if warehouse.name in stores_payload:
+                existing.setdefault(warehouse.name, warehouse)
+        return existing
+
+    def _sync_store_warehouse(self, code, existing_warehouses):
+        Warehouse = self.env["stock.warehouse"].sudo().with_context(active_test=False)
+        warehouse = existing_warehouses.get(code)
+        vals = {
+            "name": code,
+            "code": code,
+        }
+        if warehouse:
+            warehouse.write(vals)
+            return warehouse
+        warehouse = Warehouse.create({
+            **vals,
+            "company_id": self.env.company.id,
+        })
+        existing_warehouses[code] = warehouse
+        return warehouse
 
     def _sync_inventory(self, rows):
         Product = self.env["product.product"].sudo().with_context(active_test=False)
         Quant = self.env["stock.quant"].sudo()
-        Store = self.env["inventory.feed.store"].sudo().with_context(active_test=False)
 
         codes = sorted({row["_sync_code"] for row in rows})
         skus = sorted({row["_sync_sku"] for row in rows})
-        stores_by_code = {
-            store.code: store
-            for store in Store.search([("code", "in", codes)])
-            if store.active and store.location_id
+        Warehouse = self.env["stock.warehouse"].sudo().with_context(active_test=False)
+        warehouses_by_code = {
+            warehouse.code: warehouse
+            for warehouse in Warehouse.search([
+                ("company_id", "=", self.env.company.id),
+                ("code", "in", codes),
+            ])
+            if warehouse.active and warehouse.lot_stock_id
         }
         products_by_sku, created_products = self._get_products_by_sku(skus, rows)
         target_by_key = {}
         skipped = 0
 
         for row in rows:
-            store = stores_by_code.get(row["_sync_code"])
+            warehouse = warehouses_by_code.get(row["_sync_code"])
             product = products_by_sku.get(row["_sync_sku"])
-            if not store or not product:
+            if not warehouse or not product:
                 skipped += 1
                 continue
             if product.tracking != "none" or not product.product_tmpl_id.is_storable:
                 skipped += 1
                 continue
-            target_by_key[(product.id, store.location_id.id)] = (
+            target_by_key[(product.id, warehouse.lot_stock_id.id)] = (
                 product,
-                store.location_id,
+                warehouse.lot_stock_id,
                 row["_sync_quantity"],
             )
 
@@ -356,28 +391,6 @@ class InventoryFeedSyncLog(models.Model):
                 product.default_code = sku
             products_by_sku[sku] = product
         return products_by_sku, len(missing_skus)
-
-    def _default_parent_location(self):
-        warehouse = self.env["stock.warehouse"].sudo().search(
-            [("company_id", "=", self.env.company.id)], limit=1
-        )
-        if warehouse:
-            return warehouse.lot_stock_id
-        location = self.env.ref("stock.stock_location_stock", raise_if_not_found=False)
-        if location:
-            return location
-        return self.env["stock.location"].sudo().search([("usage", "=", "internal")], limit=1)
-
-    def _create_store_location(self, store, parent_location):
-        name = store.display_name or store.code
-        return self.env["stock.location"].sudo().create(
-            {
-                "name": name,
-                "usage": "internal",
-                "location_id": parent_location.id,
-                "company_id": parent_location.company_id.id or self.env.company.id,
-            }
-        )
 
     @api.model
     def _config(self, key, default=False):
