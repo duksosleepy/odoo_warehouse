@@ -1,4 +1,5 @@
 import logging
+import time
 from collections import defaultdict
 from datetime import date
 
@@ -70,6 +71,16 @@ class InventoryFeedSyncLog(models.Model):
         self.action_run_inventory_sync()
 
     @api.model
+    def cron_sync_products(self):
+        log = self.search(
+            [("sync_type", "=", "products"), ("state", "=", "running")],
+            order="started_at desc, id desc",
+            limit=1,
+        )
+        if log:
+            log._run_product_sync()
+
+    @api.model
     def action_run_store_sync(self):
         log = self.create({"sync_type": "stores", "name": _("Warehouse Feed Sync")})
         log._run_sync(stores_only=True)
@@ -77,7 +88,14 @@ class InventoryFeedSyncLog(models.Model):
 
     @api.model
     def action_run_product_sync(self):
-        log = self.create({"sync_type": "products", "name": _("Product Feed Sync")})
+        log = self.search(
+            [("sync_type", "=", "products"), ("state", "=", "running")],
+            order="started_at desc, id desc",
+            limit=1,
+        )
+        if not log:
+            log = self.create({"sync_type": "products", "name": _("Product Feed Sync")})
+            self._set_config("product_sync_offset", 0)
         log._run_product_sync()
         return log._action_open()
 
@@ -131,16 +149,17 @@ class InventoryFeedSyncLog(models.Model):
     def _run_product_sync(self):
         self.ensure_one()
         try:
-            rows, stats = self._fetch_product_rows()
-            product_stats = self._sync_products(rows)
-            product_stats["skipped_count"] += stats.get("skipped_count", 0)
-            stats.update(product_stats)
+            stats = self._run_product_sync_batch()
+            state = stats.pop("state")
+            finished_at = stats.pop("finished_at", False)
+            message = self._summary_message(stats, products_only=True)
+            stats.pop("product_sync_incomplete", None)
             self.write(
                 {
                     **stats,
-                    "state": "done",
-                    "finished_at": fields.Datetime.now(),
-                    "message": self._summary_message(stats, products_only=True),
+                    "state": state,
+                    "finished_at": finished_at,
+                    "message": message,
                 }
             )
         except Exception as exc:  # noqa: BLE001 - this is a cron/manual boundary.
@@ -155,9 +174,21 @@ class InventoryFeedSyncLog(models.Model):
                     "error_count": 1,
                 }
             )
+            self._set_config("product_sync_offset", 0)
 
     def _summary_message(self, stats, *, stores_only=False, products_only=False):
         if products_only:
+            if stats.get("product_sync_incomplete"):
+                return _(
+                    "Processed %(processed)s of %(total)s distinct SKUs so far with total quantity %(quantity)s. Created %(templates)s product templates, created %(variants)s variants, updated %(updated)s variants, skipped %(skipped)s. The background cron will continue the remaining batches.",
+                    processed=stats.get("unique_product_records", 0),
+                    total=stats.get("total_feed_records", 0),
+                    quantity=stats.get("total_product_quantity", 0.0),
+                    templates=stats.get("created_product_count", 0),
+                    variants=stats.get("created_variant_count", 0),
+                    updated=stats.get("updated_variant_count", 0),
+                    skipped=stats.get("skipped_count", 0),
+                )
             return _(
                 "Processed %(total)s feed rows into %(unique)s distinct SKUs with total quantity %(quantity)s. Created %(templates)s product templates, created %(variants)s variants, updated %(updated)s variants, skipped %(skipped)s.",
                 total=stats.get("total_feed_records", 0),
@@ -284,6 +315,119 @@ class InventoryFeedSyncLog(models.Model):
         return rows, {
             "total_feed_records": total_count or len(rows),
             "unique_product_records": len(rows),
+            "skipped_count": skipped,
+        }
+
+    def _run_product_sync_batch(self):
+        offset = self._config_int("product_sync_offset", default=0)
+        page_size = self._config_int("page_size", default=500)
+        batch_pages = max(self._config_int("product_sync_batch_pages", default=1), 1)
+        deadline = time.monotonic() + max(
+            self._config_int("product_sync_time_budget", default=45), 5
+        )
+
+        total_count = self.total_feed_records or None
+        processed = self.unique_product_records or 0
+        total_quantity = self.total_product_quantity or 0.0
+        created_templates = self.created_product_count or 0
+        created_variants = self.created_variant_count or 0
+        updated_variants = self.updated_variant_count or 0
+        skipped = self.skipped_count or 0
+        pages_done = 0
+        done = False
+
+        while pages_done < batch_pages and time.monotonic() < deadline:
+            rows, page_stats = self._fetch_product_rows_page(
+                offset,
+                page_size,
+                include_meta=total_count is None,
+            )
+            if total_count is None:
+                total_count = page_stats.get("total_feed_records") or 0
+
+            row_count = page_stats.get("page_row_count", 0)
+            skipped += page_stats.get("skipped_count", 0)
+            if not row_count:
+                done = True
+                break
+
+            product_stats = self._sync_products(rows)
+            processed += product_stats.get("unique_product_records", 0)
+            total_quantity += product_stats.get("total_product_quantity", 0.0)
+            created_templates += product_stats.get("created_product_count", 0)
+            created_variants += product_stats.get("created_variant_count", 0)
+            updated_variants += product_stats.get("updated_variant_count", 0)
+            skipped += product_stats.get("skipped_count", 0)
+
+            offset += row_count
+            pages_done += 1
+            if total_count and offset >= total_count:
+                done = True
+                break
+
+        if done:
+            self._set_config("product_sync_offset", 0)
+        else:
+            self._set_config("product_sync_offset", offset)
+
+        return {
+            "state": "done" if done else "running",
+            "finished_at": fields.Datetime.now() if done else False,
+            "total_feed_records": total_count or processed,
+            "unique_product_records": processed,
+            "total_product_quantity": total_quantity,
+            "created_product_count": created_templates,
+            "created_variant_count": created_variants,
+            "updated_variant_count": updated_variants,
+            "skipped_count": skipped,
+            "product_sync_incomplete": not done,
+        }
+
+    @api.model
+    def _fetch_product_rows_page(self, offset, page_size, *, include_meta=False):
+        rows = []
+        skipped = 0
+        collection = self._config("collection", default="tmdt_inventory_status")
+        request_params = {
+            "aggregate[sum]": "Ton_Cuoi",
+            "groupBy[]": "Ma_Vt",
+            "filter[Ma_Vt][_nempty]": "true",
+            "filter[Ton_Cuoi][_nnull]": "true",
+            "sort": "Ma_Vt",
+            "limit": max(int(page_size or 500), 1),
+            "offset": max(int(offset or 0), 0),
+        }
+        if include_meta:
+            request_params["meta"] = "total_count"
+
+        with self._api_client() as client:
+            payload = client.get_items(collection, params=request_params)
+
+        page_rows = payload.get("data") or []
+        if not isinstance(page_rows, list):
+            raise UserError(_("Directus product aggregate payload is not a list."))
+
+        for row in page_rows:
+            if not isinstance(row, dict):
+                skipped += 1
+                continue
+            sku = self._clean(row.get("Ma_Vt"))
+            quantity = self._parse_aggregate_quantity(row)
+            if not sku or quantity is None:
+                skipped += 1
+                continue
+            row["_sync_sku"] = sku
+            row["_sync_quantity"] = quantity
+            rows.append(row)
+
+        total_count = None
+        if include_meta:
+            meta = payload.get("meta") or {}
+            total_count = meta.get("total_count")
+
+        return rows, {
+            "total_feed_records": total_count,
+            "page_row_count": len(page_rows),
             "skipped_count": skipped,
         }
 
@@ -573,7 +717,10 @@ class InventoryFeedSyncLog(models.Model):
             existing_template = templates_by_code.get(template_code)
             if not existing_template:
                 existing_template = Template.create(
-                    self._prepare_product_template_values(template_specs[0])
+                    self._prepare_product_template_values(
+                        template_specs[0],
+                        specs=template_specs,
+                    )
                 )
                 templates_by_code[template_code] = existing_template
                 created_templates += 1
@@ -594,14 +741,50 @@ class InventoryFeedSyncLog(models.Model):
             "skipped_count": skipped,
         }
 
-    def _prepare_product_template_values(self, spec):
-        return {
+    def _prepare_product_template_values(self, spec, specs=None):
+        vals = {
             "name": spec["template_code"],
             "type": "consu",
             "is_storable": True,
             "sale_ok": True,
             "purchase_ok": True,
         }
+        attribute_lines = self._prepare_initial_attribute_lines(specs or [spec])
+        if attribute_lines:
+            vals["attribute_line_ids"] = attribute_lines
+        return vals
+
+    def _prepare_initial_attribute_lines(self, specs):
+        lines = []
+        size_values = sorted({spec["size"] for spec in specs if spec["size"]})
+        color_values = sorted({spec["color"] for spec in specs if spec["color"]})
+        if size_values:
+            size_attribute = self._get_variant_attribute("Size", display_type="select")
+            values = self._ensure_attribute_values(size_attribute, size_values)
+            lines.append(
+                (
+                    0,
+                    0,
+                    {
+                        "attribute_id": size_attribute.id,
+                        "value_ids": [(6, 0, [value.id for value in values.values()])],
+                    },
+                )
+            )
+        if color_values:
+            color_attribute = self._get_variant_attribute("Color", display_type="color")
+            values = self._ensure_attribute_values(color_attribute, color_values)
+            lines.append(
+                (
+                    0,
+                    0,
+                    {
+                        "attribute_id": color_attribute.id,
+                        "value_ids": [(6, 0, [value.id for value in values.values()])],
+                    },
+                )
+            )
+        return lines
 
     def _sync_template_variants(self, template, specs, existing_products_by_sku):
         created = updated = skipped = 0
@@ -675,7 +858,7 @@ class InventoryFeedSyncLog(models.Model):
     def _get_variant_attribute(self, name, *, display_type):
         Attribute = self.env["product.attribute"].sudo().with_context(active_test=False)
         attribute = Attribute.search(
-            [("name", "=", name), ("create_variant", "!=", "no_variant")],
+            [("name", "=", name), ("create_variant", "=", "dynamic")],
             limit=1,
         )
         if attribute:
@@ -817,6 +1000,14 @@ class InventoryFeedSyncLog(models.Model):
             self.env["ir.config_parameter"]
             .sudo()
             .get_param(f"warehouse_inventory_feed.{key}", default)
+        )
+
+    @api.model
+    def _set_config(self, key, value):
+        return (
+            self.env["ir.config_parameter"]
+            .sudo()
+            .set_param(f"warehouse_inventory_feed.{key}", value)
         )
 
     @api.model
