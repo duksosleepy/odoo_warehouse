@@ -10,7 +10,12 @@
                 <field name="state"/>
                 <field name="total_feed_records"/>
                 <field name="unique_inventory_records"/>
+                <field name="unique_product_records"/>
+                <field name="total_product_quantity"/>
                 <field name="created_store_count"/>
+                <field name="created_product_count"/>
+                <field name="created_variant_count"/>
+                <field name="updated_variant_count"/>
                 <field name="updated_quant_count"/>
                 <field name="skipped_count"/>
                 <field name="error_count"/>
@@ -35,10 +40,14 @@
                         <group>
                             <field name="total_feed_records"/>
                             <field name="unique_inventory_records"/>
+                            <field name="unique_product_records"/>
+                            <field name="total_product_quantity"/>
                             <field name="created_store_count"/>
                             <field name="updated_store_count"/>
                             <field name="created_location_count"/>
                             <field name="created_product_count"/>
+                            <field name="created_variant_count"/>
+                            <field name="updated_variant_count"/>
                             <field name="updated_quant_count"/>
                             <field name="unchanged_quant_count"/>
                             <field name="skipped_count"/>

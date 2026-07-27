@@ -43,6 +43,8 @@
                     <setting id="inventory_feed_actions" string="Manual Sync" help="Run the same sync logic used by the daily scheduled action.">
                         <button name="action_sync_stores" type="object" string="Sync Warehouses" class="btn-link" icon="oi-arrow-right"/>
                         <br/>
+                        <button name="action_sync_products" type="object" string="Sync Products" class="btn-link" icon="oi-arrow-right"/>
+                        <br/>
                         <button name="action_sync_inventory" type="object" string="Sync Inventory" class="btn-link" icon="oi-arrow-right"/>
                     </setting>
                 </block>

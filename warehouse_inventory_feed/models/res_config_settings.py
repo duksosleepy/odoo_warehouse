@@ -46,6 +46,11 @@ class ResConfigSettings(models.TransientModel):
         self.set_values()
         return self.env["inventory.feed.sync.log"].action_run_store_sync()
 
+    def action_sync_products(self):
+        self.ensure_one()
+        self.set_values()
+        return self.env["inventory.feed.sync.log"].action_run_product_sync()
+
     def action_sync_inventory(self):
         self.ensure_one()
         self.set_values()
